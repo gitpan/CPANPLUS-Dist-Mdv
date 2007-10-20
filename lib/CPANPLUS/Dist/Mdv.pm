@@ -19,10 +19,11 @@ use File::Copy      qw[ copy ];
 use IPC::Cmd        qw[ run can_run ];
 use Readonly;
 
-our $VERSION = '0.1.1';
+our $VERSION = '0.1.2';
 
 Readonly my $DATA_OFFSET => tell(DATA);
-Readonly my $HOME => $ENV{HOME} || $ENV{LOGDIR} || (getpwuid($>))[7];
+Readonly my $HOME   => $ENV{HOME} || $ENV{LOGDIR} || (getpwuid($>))[7];
+Readonly my $RPMDIR => "$HOME/rpm";
 
 
 #--
@@ -38,18 +39,18 @@ sub format_available {
     # check mandriva release file
     if ( ! -f '/etc/mandriva-release' ) {
         error( 'not on a mandriva system' );
-        return 0;
+        return;
     }
 
     my $flag;
 
     # check rpm tree structure
-    if ( ! -d "$HOME/rpm" ) {
+    if ( ! -d $RPMDIR ) {
         error( 'need to create rpm tree structure in your home' );
-        return 0;
+        return;
     }
     foreach my $subdir ( qw[ BUILD RPMS SOURCES SPECS SRPMS tmp ] ) {
-        my $dir = "$HOME/rpm/$subdir";
+        my $dir = "$RPMDIR/$subdir";
         next if -d $dir;
         error( "missing directory '$dir'" );
         $flag++;
@@ -80,10 +81,10 @@ sub init {
     # distname: Foo-Bar
     # distvers: 1.23
     # rpmname:  perl-Foo-Bar
-    # rpm:      $HOME/rpm/RPMS/noarch/perl-Foo-Bar-1.23-1mdv2008.0.noarch.rpm
-    # srpm:     $HOME/rpm/SRPMS/perl-Foo-Bar-1.23-1mdv2008.0.src.rpm
+    # rpm:      $RPMDIR/RPMS/noarch/perl-Foo-Bar-1.23-1mdv2008.0.noarch.rpm
+    # srpm:     $RPMDIR/SRPMS/perl-Foo-Bar-1.23-1mdv2008.0.src.rpm
     # rpmvers:  1
-    # specpath: $HOME/rpm/SPECS/perl-Foo-Bar.spec
+    # specpath: $RPMDIR/SPECS/perl-Foo-Bar.spec
     $status->mk_accessors(qw[ distname distvers rpmname rpm
         rpmvers srpm specpath ]);
 
@@ -97,7 +98,7 @@ sub prepare {
     # note: we're also running create + install at this stage to know
     # the list of files to be installed. indeed, this will be needed for
     # the specfile creation.
-    $self->SUPER::prepare( %args, verbose=>0 );
+    $self->SUPER::prepare( %args );
 
     my $status = $self->status;               # private hash
     my $module = $self->parent;               # CPANPLUS::Module
@@ -129,7 +130,7 @@ sub prepare {
         map { basename $_ }
         @{ $module->status->files };
 
-    my $rpmname = _mk_pkg_name($module);
+    my $rpmname = _mk_pkg_name($distname);
     $status->rpmname( $rpmname );
 
 
@@ -149,10 +150,11 @@ sub prepare {
         }
 
         msg( '--force in use, rebuilding anyway' );
+        # FIXME: bump rpm version
     }
 
     # compute & store path of specfile.
-    my $spec = "$HOME/rpm/SPECS/$rpmname.spec";
+    my $spec = "$RPMDIR/SPECS/$rpmname.spec";
     $status->specpath($spec);
 
     my $vers = $module->version;
@@ -160,7 +162,11 @@ sub prepare {
 
     # writing the spec file.
     seek DATA, $DATA_OFFSET, 0;
-    open my $specfh, '>', $spec or die "can't open '$spec': $!";
+    my $specfh;
+    if ( not open $specfh, '>', $spec ) {
+        error( "can't open '$spec': $!" );
+        return;
+    }
     while ( defined( my $line = <DATA> ) ) {
         last if $line =~ /^__END__$/;
 
@@ -180,7 +186,7 @@ sub prepare {
 
     # copy package.
     my $basename = basename $module->status->fetch;
-    my $tarball = "$HOME/rpm/SOURCES/$basename";
+    my $tarball = "$RPMDIR/SOURCES/$basename";
     copy( $module->status->fetch, $tarball );
 
     # return success
@@ -225,8 +231,8 @@ sub create {
 
     # check if the dry-run finished correctly
     if ( $success ) {
-        my ($rpm)  = glob "$HOME/rpm/RPMS/*/$rpmname-*.rpm";
-        my ($srpm) = glob "$HOME/rpm/SRPMS/$rpmname-*.src.rpm";
+        my ($rpm)  = glob "$RPMDIR/RPMS/*/$rpmname-*.rpm"; # FIXME: may be multiple rpms
+        my ($srpm) = glob "$RPMDIR/SRPMS/$rpmname-*.src.rpm";
         msg( "rpm created successfully: $rpm" );
         msg( "srpm available: $srpm" );
         $status->rpm($rpm);
@@ -241,10 +247,11 @@ sub create {
     if ( not $buffer =~ /^\s+Installed .but unpackaged. file.s. found:\n(.*)\z/ms ) {
         error( "failed to create mandriva package for '$distname': $buffer" );
         $status->created(0);
-        return 0;
+        return;
     }
 
     msg( "extra files installed, fixing spec file" );
+    # FIXME: change spec file
     # additional files to be packaged
     #my $files = $1;
     #$files =~ s/^\s+//mg; # remove spaces
@@ -287,15 +294,15 @@ sub _has_been_build {
 # private subs
 
 #
-# my $name = _mk_pkg_name($module);
+# my $name = _mk_pkg_name($dist);
 #
-# given the CPANPLUS::Module object $module, return the name of the
-# mandriva rpm package.
+# given a distribution name, return the name of the mandriva rpm
+# package. in most cases, it will be the same, but some pakcage name
+# will be too long as a rpm name: we'll have to cut it.
 #
 sub _mk_pkg_name {
-    my ($module) = @_;
-    my $name = 'perl-' . $module->module;
-    $name =~ s/::/-/g;
+    my ($dist) = @_;
+    my $name = 'perl-' . $dist;
     return $name;
 }
 
@@ -315,7 +322,7 @@ Summary:    DISTSUMMARY
 Source0:    DISTURL
 Url:		http://search.cpan.org/dist/%{realname}
 BuildRoot:	%{_tmppath}/%{name}-%{version}-%{release}-buildroot
-BuildRequires:	perl-devel
+BuildRequires: perl-devel
 DISTBUILDREQUIRES
 DISTREQUIRES
 
@@ -411,7 +418,7 @@ all the needed status accessors.
 Called automatically whenever you create a new C<CPANPLUS::Dist> object.
 
 
-=head2 $boot = $mdv->prepare;
+=head2 $bool = $mdv->prepare;
 
 Prepares a distribution for creation. This means it will create the rpm
 spec file needed to build the rpm and source rpm. This will also satisfy
