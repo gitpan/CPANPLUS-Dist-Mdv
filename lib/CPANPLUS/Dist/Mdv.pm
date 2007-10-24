@@ -19,7 +19,7 @@ use File::Copy      qw[ copy ];
 use IPC::Cmd        qw[ run can_run ];
 use Readonly;
 
-our $VERSION = '0.1.2';
+our $VERSION = '0.1.3';
 
 Readonly my $DATA_OFFSET => tell(DATA);
 Readonly my $HOME   => $ENV{HOME} || $ENV{LOGDIR} || (getpwuid($>))[7];
@@ -81,25 +81,18 @@ sub init {
     # distname: Foo-Bar
     # distvers: 1.23
     # rpmname:  perl-Foo-Bar
-    # rpm:      $RPMDIR/RPMS/noarch/perl-Foo-Bar-1.23-1mdv2008.0.noarch.rpm
-    # srpm:     $RPMDIR/SRPMS/perl-Foo-Bar-1.23-1mdv2008.0.src.rpm
+    # rpmpath:  $RPMDIR/RPMS/noarch/perl-Foo-Bar-1.23-1mdv2008.0.noarch.rpm
     # rpmvers:  1
+    # srpmpath: $RPMDIR/SRPMS/perl-Foo-Bar-1.23-1mdv2008.0.src.rpm
     # specpath: $RPMDIR/SPECS/perl-Foo-Bar.spec
-    $status->mk_accessors(qw[ distname distvers rpmname rpm
-        rpmvers srpm specpath ]);
+    $status->mk_accessors(qw[ distname distvers rpmname rpmpath
+        rpmvers srpmpath specpath ]);
 
     return 1;
 }
 
 sub prepare {
     my ($self, %args) = @_;
-
-    # dry-run with makemaker: handles prereqs, .
-    # note: we're also running create + install at this stage to know
-    # the list of files to be installed. indeed, this will be needed for
-    # the specfile creation.
-    $self->SUPER::prepare( %args );
-
     my $status = $self->status;               # private hash
     my $module = $self->parent;               # CPANPLUS::Module
     my $intern = $module->parent;             # CPANPLUS::Internals
@@ -113,6 +106,10 @@ sub prepare {
         verbose => $conf->get_conf('verbose'),
         %args,
     );
+
+    # dry-run with makemaker: find build prereqs.
+    msg( "dry-run prepare with makemaker..." );
+    $self->SUPER::prepare( %args );
 
     # compute & store package information
     my $distname    = $module->package_name;
@@ -135,22 +132,26 @@ sub prepare {
 
 
     # check whether package has been build.
-    if ( my $pkg = $self->_has_been_build ) {
+    if ( my $pkg = $self->_has_been_build($rpmname, $distvers) ) {
         my $modname = $module->module;
         msg( "already created package for '$modname' at '$pkg'" );
 
         if ( not $opts{force} ) {
-            msg( "won't rebuild package since --force isn't in use" );
+            msg( "won't re-spec package since --force isn't in use" );
+            # c::d::mdv store
+            $status->rpmpath($pkg); # store the path of rpm
+            # cpanplus api
             $status->prepared(1);
             $status->created(1);
-            $status->pkgpath($pkg);
             $status->dist($pkg);
             return $pkg;
             # XXX check if it works
         }
 
-        msg( '--force in use, rebuilding anyway' );
+        msg( '--force in use, re-specing anyway' );
         # FIXME: bump rpm version
+    } else {
+        msg( "writing specfile for '$distname'..." );
     }
 
     # compute & store path of specfile.
@@ -158,7 +159,6 @@ sub prepare {
     $status->specpath($spec);
 
     my $vers = $module->version;
-    msg($vers);
 
     # writing the spec file.
     seek DATA, $DATA_OFFSET, 0;
@@ -189,6 +189,7 @@ sub prepare {
     my $tarball = "$RPMDIR/SOURCES/$basename";
     copy( $module->status->fetch, $tarball );
 
+    msg( "specfile for '$distname' written" );
     # return success
     $status->prepared(1);
     return 1;
@@ -197,9 +198,6 @@ sub prepare {
 
 sub create {
     my ($self, %args) = @_;
-
-    $self->SUPER::create( %args, verbose=>0 );
-
     my $status = $self->status;               # private hash
     my $module = $self->parent;               # CPANPLUS::Module
     my $intern = $module->parent;             # CPANPLUS::Internals
@@ -214,9 +212,25 @@ sub create {
         %args,
     );
 
+    # check if we need to rebuild package.
+    if ( $status->created && defined $status->dist ) {
+        if ( not $opts{force} ) {
+            msg( "won't re-build package since --force isn't in use" );
+            return $status->dist;
+        }
+        msg( '--force in use, re-building anyway' );
+    }
+
+    # dry-run with makemaker: handle prereqs.
+    msg( "dry-run build with makemaker..." );
+    $self->SUPER::create( %args );
+
+
     my $spec     = $status->specpath;
     my $distname = $status->distname;
     my $rpmname  = $status->rpmname;
+
+    msg( "building '$distname' from specfile..." );
 
     # dry-run, to see if we forgot some files
     my ($buffer, $success);
@@ -235,17 +249,19 @@ sub create {
         my ($srpm) = glob "$RPMDIR/SRPMS/$rpmname-*.src.rpm";
         msg( "rpm created successfully: $rpm" );
         msg( "srpm available: $srpm" );
-        $status->rpm($rpm);
-        $status->srpm($srpm);
-        $status->dist($rpm);
+        # c::d::mdv store
+        $status->rpmpath($rpm);
+        $status->srpmpath($srpm);
+        # cpanplus api
         $status->created(1);
-
-        return 1;
+        $status->dist($rpm);
+        return $rpm;
     }
 
     # unknown error, aborting.
     if ( not $buffer =~ /^\s+Installed .but unpackaged. file.s. found:\n(.*)\z/ms ) {
         error( "failed to create mandriva package for '$distname': $buffer" );
+        # cpanplus api
         $status->created(0);
         return;
     }
@@ -281,12 +297,10 @@ sub install {
 # return true if there's already a package build for this module.
 # 
 sub _has_been_build {
-    my ($self) = @_;
-
-    my $name = $self->status->rpmname;
-    my $vers = $self->parent->version;  # module version
-    #return "/home/jquelin/rpm/RPMS/noarch/perl-POE-Component-Client-Keepalive-0.1000-1mdv2008.0.noarch.rpm";
-    return 0; # FIXME do some real checks, including cooker.
+    my ($self, $name, $vers) = @_;
+    my $pkg = ( sort glob "$RPMDIR/RPMS/*/$name-$vers-*.rpm" )[-1];
+    return $pkg;
+    # FIXME: should we check cooker?
 }
 
 
