@@ -19,7 +19,7 @@ use File::Copy      qw[ copy ];
 use IPC::Cmd        qw[ run can_run ];
 use Readonly;
 
-our $VERSION = '0.1.3';
+our $VERSION = '0.2.0';
 
 Readonly my $DATA_OFFSET => tell(DATA);
 Readonly my $HOME   => $ENV{HOME} || $ENV{LOGDIR} || (getpwuid($>))[7];
@@ -80,12 +80,13 @@ sub init {
     my $status = $self->status; # an Object::Accessor
     # distname: Foo-Bar
     # distvers: 1.23
+    # extra_files: qw[ /bin/foo /usr/bin/bar ] 
     # rpmname:  perl-Foo-Bar
     # rpmpath:  $RPMDIR/RPMS/noarch/perl-Foo-Bar-1.23-1mdv2008.0.noarch.rpm
     # rpmvers:  1
     # srpmpath: $RPMDIR/SRPMS/perl-Foo-Bar-1.23-1mdv2008.0.src.rpm
     # specpath: $RPMDIR/SPECS/perl-Foo-Bar.spec
-    $status->mk_accessors(qw[ distname distvers rpmname rpmpath
+    $status->mk_accessors(qw[ distname distvers extra_files rpmname rpmpath
         rpmvers srpmpath specpath ]);
 
     return 1;
@@ -178,7 +179,7 @@ sub prepare {
         $line =~ s/DISTREQUIRES/$distreqs/;
         #$line =~ s/DISTDESCR/$distdescr/;
         $line =~ s/DISTDOC/@docfiles ? "%doc @docfiles" : ''/e;
-        #$line =~ s/DISTEXTRA/join( "\n", @{ $dist->extra_files || [] })/e;
+        $line =~ s/DISTEXTRA/join( "\n", @{ $status->extra_files || [] })/e;
 
         print $specfh $line;
     }
@@ -221,60 +222,62 @@ sub create {
         msg( '--force in use, re-building anyway' );
     }
 
-    # dry-run with makemaker: handle prereqs.
-    msg( "dry-run build with makemaker..." );
-    $self->SUPER::create( %args );
+    RPMBUILD: {
+        # dry-run with makemaker: handle prereqs.
+        msg( 'dry-run build with makemaker...' );
+        $self->SUPER::create( %args );
 
 
-    my $spec     = $status->specpath;
-    my $distname = $status->distname;
-    my $rpmname  = $status->rpmname;
+        my $spec     = $status->specpath;
+        my $distname = $status->distname;
+        my $rpmname  = $status->rpmname;
 
-    msg( "building '$distname' from specfile..." );
+        msg( "building '$distname' from specfile..." );
 
-    # dry-run, to see if we forgot some files
-    my ($buffer, $success);
-    DRYRUN: {
-        local $ENV{LC_ALL} = 'C';
-        $success = run(
-            command => "rpmbuild -ba $spec",
-            verbose => $opts{verbose},
-            buffer  => \$buffer,
-        );
+        # dry-run, to see if we forgot some files
+        my ($buffer, $success);
+        DRYRUN: {
+            local $ENV{LC_ALL} = 'C';
+            $success = run(
+                command => "rpmbuild -ba --quiet $spec",
+                verbose => $opts{verbose},
+                buffer  => \$buffer,
+            );
+        }
+
+        # check if the dry-run finished correctly
+        if ( $success ) {
+            my ($rpm)  = (sort glob "$RPMDIR/RPMS/*/$rpmname-*.rpm")[-1];
+            my ($srpm) = (sort glob "$RPMDIR/SRPMS/$rpmname-*.src.rpm")[-1];
+            msg( "rpm created successfully: $rpm" );
+            msg( "srpm available: $srpm" );
+            # c::d::mdv store
+            $status->rpmpath($rpm);
+            $status->srpmpath($srpm);
+            # cpanplus api
+            $status->created(1);
+            $status->dist($rpm);
+            return $rpm;
+        }
+
+        # unknown error, aborting.
+        if ( not $buffer =~ /^\s+Installed .but unpackaged. file.s. found:\n(.*)\z/ms ) {
+            error( "failed to create mandriva package for '$distname': $buffer" );
+            # cpanplus api
+            $status->created(0);
+            return;
+        }
+
+        # additional files to be packaged
+        msg( "extra files installed, fixing spec file" );
+        my $files = $1;
+        $files =~ s/^\s+//mg; # remove spaces
+        my @files = split /\n/, $files;
+        $status->extra_files( \@files );
+        $self->prepare( %opts, force => 1 );
+        msg( 'restarting build phase' );
+        redo RPMBUILD;
     }
-
-    # check if the dry-run finished correctly
-    if ( $success ) {
-        my ($rpm)  = glob "$RPMDIR/RPMS/*/$rpmname-*.rpm"; # FIXME: may be multiple rpms
-        my ($srpm) = glob "$RPMDIR/SRPMS/$rpmname-*.src.rpm";
-        msg( "rpm created successfully: $rpm" );
-        msg( "srpm available: $srpm" );
-        # c::d::mdv store
-        $status->rpmpath($rpm);
-        $status->srpmpath($srpm);
-        # cpanplus api
-        $status->created(1);
-        $status->dist($rpm);
-        return $rpm;
-    }
-
-    # unknown error, aborting.
-    if ( not $buffer =~ /^\s+Installed .but unpackaged. file.s. found:\n(.*)\z/ms ) {
-        error( "failed to create mandriva package for '$distname': $buffer" );
-        # cpanplus api
-        $status->created(0);
-        return;
-    }
-
-    msg( "extra files installed, fixing spec file" );
-    # FIXME: change spec file
-    # additional files to be packaged
-    #my $files = $1;
-    #$files =~ s/^\s+//mg; # remove spaces
-    #my @files = split /\n/, $files;
-    #$dist->extra_files( \@files );
-
-
 }
 
 sub install {
@@ -367,7 +370,7 @@ rm -rf $RPM_BUILD_ROOT
 DISTDOC
 %{_mandir}
 %perl_vendorlib
-#DISTEXTRA
+DISTEXTRA
 
 
 %changelog
