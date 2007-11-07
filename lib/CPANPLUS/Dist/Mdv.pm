@@ -20,7 +20,7 @@ use File::HomeDir;
 use IPC::Cmd        qw[ run can_run ];
 use Readonly;
 
-our $VERSION = '0.2.1';
+our $VERSION = '0.2.2';
 
 Readonly my $DATA_OFFSET => tell(DATA);
 Readonly my $RPMDIR      => File::HomeDir->my_home . '/rpm';
@@ -116,12 +116,12 @@ sub prepare {
     my $distname    = $module->package_name;
     $status->distname( $distname );
     my $distvers    = $module->package_version;
+    my $distext     = $module->package_extension;
     #my $distsummary    = 
     #my $distdescr      = 
     #my $distlicense    =
-    my $disturl        = $module->package;
+    my ($disttoplevel) = $module->name=~ /([^:]+)::/;
     my @reqs           = sort keys %{ $module->status->prereqs };
-    my $distreqs       = join "\n", map { "Requires: perl($_)" } @reqs;
     my $distbreqs      = join "\n", map { "BuildRequires: perl($_)" } @reqs;
     my @docfiles =
         grep { /(README|Change(s|log)|LICENSE|META.yml)$/i }
@@ -174,11 +174,11 @@ sub prepare {
         $line =~ s/DISTNAME/$distname/;
         $line =~ s/DISTVERS/$distvers/;
         #$line =~ s/DISTSUMMARY/$distsummary/;
-        $line =~ s/DISTURL/$disturl/;
+        $line =~ s/DISTEXTENSION/$distext/;
         $line =~ s/DISTBUILDREQUIRES/$distbreqs/;
-        $line =~ s/DISTREQUIRES/$distreqs/;
         #$line =~ s/DISTDESCR/$distdescr/;
         $line =~ s/DISTDOC/@docfiles ? "%doc @docfiles" : ''/e;
+        $line =~ s/DISTTOPLEVEL/$disttoplevel/;
         $line =~ s/DISTEXTRA/join( "\n", @{ $status->extra_files || [] })/e;
 
         print $specfh $line;
@@ -328,19 +328,20 @@ sub _mk_pkg_name {
 __DATA__
 
 %define realname   DISTNAME
+%define version    DISTVERS
+%define release    %mkrel 1
 
-Name:		perl-%{realname}
-Version:    DISTVERS
-Release:    %mkrel 1
-License:	GPL or Artistic
-Group:		Development/Perl
+Name:       perl-%{realname}
+Version:    %{version}
+Release:    %{release}
+License:    GPL or Artistic
+Group:      Development/Perl
 Summary:    DISTSUMMARY
-Source0:    DISTURL
-Url:		http://search.cpan.org/dist/%{realname}
-BuildRoot:	%{_tmppath}/%{name}-%{version}-%{release}-buildroot
+Source:     http://www.cpan.org/modules/by-module/DISTTOPLEVEL/%{realname}-%{version}.DISTEXTENSION
+Url:        http://search.cpan.org/dist/%{realname}
+BuildRoot:  %{_tmppath}/%{name}-%{version}-%{release}-buildroot
 BuildRequires: perl-devel
 DISTBUILDREQUIRES
-DISTREQUIRES
 
 BuildArch: noarch
 
@@ -367,8 +368,8 @@ rm -rf $RPM_BUILD_ROOT
 %files
 %defattr(-,root,root)
 DISTDOC
-%{_mandir}
-%perl_vendorlib
+%{_mandir}/man3/*
+%perl_vendorlib/DISTTOPLEVEL
 DISTEXTRA
 
 
