@@ -18,9 +18,10 @@ use File::Basename;
 use File::Copy      qw[ copy ];
 use File::HomeDir;
 use IPC::Cmd        qw[ run can_run ];
+use Pod::POM;
 use Readonly;
 
-our $VERSION = '0.2.2';
+our $VERSION = '0.3.0';
 
 Readonly my $DATA_OFFSET => tell(DATA);
 Readonly my $RPMDIR      => File::HomeDir->my_home . '/rpm';
@@ -117,8 +118,8 @@ sub prepare {
     $status->distname( $distname );
     my $distvers    = $module->package_version;
     my $distext     = $module->package_extension;
-    #my $distsummary    = 
-    #my $distdescr      = 
+    my $distsummary    = _module_summary($module);
+    my $distdescr      = _module_description($module);
     #my $distlicense    =
     my ($disttoplevel) = $module->name=~ /([^:]+)::/;
     my @reqs           = sort keys %{ $module->status->prereqs };
@@ -173,10 +174,10 @@ sub prepare {
 
         $line =~ s/DISTNAME/$distname/;
         $line =~ s/DISTVERS/$distvers/;
-        #$line =~ s/DISTSUMMARY/$distsummary/;
+        $line =~ s/DISTSUMMARY/$distsummary/;
         $line =~ s/DISTEXTENSION/$distext/;
         $line =~ s/DISTBUILDREQUIRES/$distbreqs/;
-        #$line =~ s/DISTDESCR/$distdescr/;
+        $line =~ s/DISTDESCR/$distdescr/;
         $line =~ s/DISTDOC/@docfiles ? "%doc @docfiles" : ''/e;
         $line =~ s/DISTTOPLEVEL/$disttoplevel/;
         $line =~ s/DISTEXTRA/join( "\n", @{ $status->extra_files || [] })/e;
@@ -323,6 +324,80 @@ sub _mk_pkg_name {
 }
 
 
+
+#
+# my $description = _module_description($module);
+#
+# given a cpanplus::module, try to extract its description from the
+# embedded pod in the extracted files. this would be the first paragraph
+# of the DESCRIPTION head1.
+#
+sub _module_description {
+    my ($module) = @_;
+
+    my $path = dirname $module->_status->extract; # where tarball has been extracted
+    my @docfiles =
+        map  { "$path/$_" }               # prepend extract directory
+        sort { length $a <=> length $b }  # sort by length: we prefer top-level module description
+        grep { /\.(pod|pm)$/ }            # filter out those that can contain pod
+        @{ $module->_status->files };     # list of files embedded
+
+    # parse file, trying to find a header
+    my $parser = Pod::POM->new;
+    foreach my $docfile ( @docfiles ) {
+        my $pom = $parser->parse_file($docfile);  # try to find some pod
+        next unless defined $pom;                 # the file may contain no pod, that's ok
+        HEAD1:
+        foreach my $head1 ($pom->head1) {
+            my $title = $head1->title;
+            next HEAD1 unless $title eq 'DESCRIPTION';
+            my $content = $head1->content;
+            return join '', (@$content)[0..2]; # only the 3 first paragraphs
+        }
+    }
+
+    return 'no desccription found';
+}
+
+
+#
+# my $summary = _module_summary($module);
+#
+# given a cpanplus::module, return its registered description (if any)
+# or try to extract it from the embedded pod in the extracted files.
+#
+sub _module_summary {
+    my ($module) = @_;
+
+    # registered modules won't go farther...
+    return $module->description if $module->description;
+
+    my $path = dirname $module->_status->extract; # where tarball has been extracted
+    my @docfiles =
+        map  { "$path/$_" }               # prepend extract directory
+        sort { length $a <=> length $b }  # sort by length: we prefer top-level module summary
+        grep { /\.(pod|pm)$/ }            # filter out those that can contain pod
+        @{ $module->_status->files };     # list of files embedded
+
+    # parse file, trying to find a header
+    my $parser = Pod::POM->new;
+    foreach my $docfile ( @docfiles ) {
+        my $pom = $parser->parse_file($docfile);  # try to find some pod
+        next unless defined $pom;                 # the file may contain no pod, that's ok
+        HEAD1:
+        foreach my $head1 ($pom->head1) {
+            my $title = $head1->title;
+            next HEAD1 unless $title eq 'NAME';
+            my $content = $head1->content;
+            $content =~ s/^[^-]+ - //;
+            $content =~ s/\n+$//;
+            return $content if $content;
+        }
+    }
+
+    return 'no summary found';
+}
+
 1;
 
 __DATA__
@@ -440,6 +515,10 @@ Called automatically whenever you create a new C<CPANPLUS::Dist> object.
 Prepares a distribution for creation. This means it will create the rpm
 spec file needed to build the rpm and source rpm. This will also satisfy
 any prerequisites the module may have.
+
+Note that the spec file will be as accurate as possible. However, some
+fields may wrong (especially the description, and maybe the summary)
+since it relies on pod parsing to find those information.
 
 Returns true on success and false on failure.
 
