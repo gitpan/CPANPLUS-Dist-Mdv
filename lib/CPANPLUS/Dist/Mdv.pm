@@ -18,10 +18,11 @@ use File::Basename;
 use File::Copy      qw[ copy ];
 use File::HomeDir;
 use IPC::Cmd        qw[ run can_run ];
+use List::Util      qw[ first ];
 use Pod::POM;
 use Readonly;
 
-our $VERSION = '0.3.0';
+our $VERSION = '0.3.1';
 
 Readonly my $DATA_OFFSET => tell(DATA);
 Readonly my $RPMDIR      => File::HomeDir->my_home . '/rpm';
@@ -128,6 +129,9 @@ sub prepare {
         grep { /(README|Change(s|log)|LICENSE|META.yml)$/i }
         map { basename $_ }
         @{ $module->status->files };
+    my $distarch =
+        defined( first { /\.(c|xs)$/i } @{ $module->status->files } )
+        ? '' : 'BuildArch: noarch';
 
     my $rpmname = _mk_pkg_name($distname);
     $status->rpmname( $rpmname );
@@ -176,6 +180,7 @@ sub prepare {
         $line =~ s/DISTVERS/$distvers/;
         $line =~ s/DISTSUMMARY/$distsummary/;
         $line =~ s/DISTEXTENSION/$distext/;
+        $line =~ s/DISTARCH/$distarch/;
         $line =~ s/DISTBUILDREQUIRES/$distbreqs/;
         $line =~ s/DISTDESCR/$distdescr/;
         $line =~ s/DISTDOC/@docfiles ? "%doc @docfiles" : ''/e;
@@ -381,6 +386,7 @@ sub _module_summary {
 
     # parse file, trying to find a header
     my $parser = Pod::POM->new;
+    DOCFILE:
     foreach my $docfile ( @docfiles ) {
         my $pom = $parser->parse_file($docfile);  # try to find some pod
         next unless defined $pom;                 # the file may contain no pod, that's ok
@@ -389,9 +395,8 @@ sub _module_summary {
             my $title = $head1->title;
             next HEAD1 unless $title eq 'NAME';
             my $content = $head1->content;
-            $content =~ s/^[^-]+ - //;
-            $content =~ s/\n+$//;
-            return $content if $content;
+            next DOCFILE unless $content =~ /^[^-]+ - (.*)$/m;
+            return $1 if $content;
         }
     }
 
@@ -418,7 +423,7 @@ BuildRoot:  %{_tmppath}/%{name}-%{version}-%{release}-buildroot
 BuildRequires: perl-devel
 DISTBUILDREQUIRES
 
-BuildArch: noarch
+DISTARCH
 
 %description
 DISTDESCR
@@ -444,7 +449,7 @@ rm -rf $RPM_BUILD_ROOT
 %defattr(-,root,root)
 DISTDOC
 %{_mandir}/man3/*
-%perl_vendorlib/DISTTOPLEVEL
+%perl_vendorlib/*
 DISTEXTRA
 
 
