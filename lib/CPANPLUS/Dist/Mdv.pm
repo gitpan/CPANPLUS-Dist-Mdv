@@ -25,7 +25,7 @@ use Readonly;
 use Text::Wrap;
 
 
-our $VERSION = '0.3.5';
+our $VERSION = '0.3.6';
 
 Readonly my $DATA_OFFSET => tell(DATA);
 Readonly my $RPMDIR => do { chomp(my $d=qx[ rpm --eval %_topdir ]); $d; };
@@ -130,7 +130,7 @@ sub prepare {
     push @reqs, 'Module::Build::Compat' if _is_module_build_compat($module);
     my $distbreqs      = join "\n", map { "BuildRequires: perl($_)" } @reqs;
     my @docfiles =
-        grep { /(README|Change(s|log)|LICENSE|META.yml)$/i }
+        grep { /(README|Change(s|log)|LICENSE)$/i }
         map { basename $_ }
         @{ $module->status->files };
     my $distarch =
@@ -440,7 +440,6 @@ DISTBUILDREQUIRES
 DISTARCH
 
 %description
-
 DISTDESCR
 
 %prep
@@ -454,11 +453,11 @@ DISTDESCR
 make test
 
 %install
-rm -rf $RPM_BUILD_ROOT
+rm -rf %buildroot
 %makeinstall_std
 
 %clean
-rm -rf $RPM_BUILD_ROOT
+rm -rf %buildroot
 
 %files
 %defattr(-,root,root)
@@ -466,6 +465,9 @@ DISTDOC
 %{_mandir}/man3/*
 %perl_vendorlib/*
 DISTEXTRA
+
+%changelog
+initial mdv release, generated with cpan2dist
 
 
 __END__
