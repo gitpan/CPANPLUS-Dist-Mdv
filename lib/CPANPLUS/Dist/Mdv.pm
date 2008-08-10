@@ -21,11 +21,12 @@ use IPC::Cmd        qw[ run can_run ];
 use List::Util      qw[ first ];
 use Pod::POM;
 use Pod::POM::View::Text;
+use POSIX ();
 use Readonly;
 use Text::Wrap;
 
 
-our $VERSION = '0.3.6';
+our $VERSION = '0.3.7';
 
 Readonly my $DATA_OFFSET => tell(DATA);
 Readonly my $RPMDIR => do { chomp(my $d=qx[ rpm --eval %_topdir ]); $d; };
@@ -181,7 +182,7 @@ sub prepare {
         last if $line =~ /^__END__$/;
 
         $line =~ s/DISTNAME/$distname/;
-        $line =~ s/DISTVERS/$distvers/;
+        $line =~ s/DISTVERS/$distvers/g;
         $line =~ s/DISTSUMMARY/$distsummary/;
         $line =~ s/DISTEXTENSION/$distext/;
         $line =~ s/DISTARCH/$distarch/;
@@ -190,6 +191,7 @@ sub prepare {
         $line =~ s/DISTDOC/@docfiles ? "%doc @docfiles" : ''/e;
         $line =~ s/DISTTOPLEVEL/$disttoplevel/;
         $line =~ s/DISTEXTRA/join( "\n", @{ $status->extra_files || [] })/e;
+        $line =~ s/DISTDATE/POSIX::strftime("%a %b %d %Y", localtime())/e;
 
         print $specfh $line;
     }
@@ -467,8 +469,8 @@ DISTDOC
 DISTEXTRA
 
 %changelog
-initial mdv release, generated with cpan2dist
-
+* DISTDATE cpan2dist DISTVERS-1mdv
+- initial mdv release, generated with cpan2dist
 
 __END__
 
@@ -610,7 +612,7 @@ C<cpan2dist>, C<rpm>, C<urpmi>
 
 
 C<CPANPLUS::Dist::Mdv> development takes place on
-L<http://cpanplus-dist-mdv.googlecode.com> - feel free to join us.
+L<http://repo.or.cz/w/cpanplus-dist-mdv.git> - feel free to join us.
 
 
 You can also look for information on this module at:
