@@ -26,7 +26,7 @@ use Readonly;
 use Text::Wrap;
 
 
-our $VERSION = '0.3.8';
+our $VERSION = '0.3.9';
 
 Readonly my $DATA_OFFSET => tell(DATA);
 Readonly my $RPMDIR => do { chomp(my $d=qx[ rpm --eval %_topdir ]); $d; };
@@ -173,7 +173,7 @@ sub prepare {
 
     # writing the spec file.
     seek DATA, $DATA_OFFSET, 0;
-    POSIX::setlocale(POSIX::LC_ALL, 'C');
+    POSIX::setlocale(&POSIX::LC_ALL, 'C');
     my $specfh;
     if ( not open $specfh, '>', $spec ) {
         error( "can't open '$spec': $!" );
