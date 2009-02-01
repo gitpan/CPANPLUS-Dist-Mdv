@@ -26,7 +26,7 @@ use Readonly;
 use Text::Wrap;
 
 
-our $VERSION = '0.3.9';
+our $VERSION = '1.0.0';
 
 Readonly my $DATA_OFFSET => tell(DATA);
 Readonly my $RPMDIR => do { chomp(my $d=qx[ rpm --eval %_topdir ]); $d; };
@@ -260,7 +260,7 @@ sub create {
 
         # check if the dry-run finished correctly
         if ( $success ) {
-            my ($rpm)  = (sort glob "$RPMDIR/RPMS/*/$rpmname-*.rpm")[-1];
+            my ($rpm)  = (sort glob "$RPMDIR/RPMS/*/$rpmname-*.rpm")[0];
             my ($srpm) = (sort glob "$RPMDIR/SRPMS/$rpmname-*.src.rpm")[-1];
             msg( "rpm created successfully: $rpm" );
             msg( "srpm available: $srpm" );
@@ -295,10 +295,41 @@ sub create {
 
 sub install {
     my ($self, %args) = @_;
-    my $rpm = $self->status->rpm;
-    error( "installing $rpm" );
-    die;
-    #$dist->status->installed
+    my $status = $self->status;               # private hash
+    my $module = $self->parent;               # CPANPLUS::Module
+    my $intern = $module->parent;             # CPANPLUS::Internals
+    my $conf   = $intern->configure_object;   # CPANPLUS::Configure
+    my $distmm = $module->status->dist_cpan;  # CPANPLUS::Dist::MM
+
+    # parse args.
+    my %opts = (
+        verbose => $conf->get_conf('verbose'),
+        %args,
+    );
+
+
+    my $rpm = $self->status->rpmpath;
+    msg( "installing $rpm" );
+
+    # install the rpm
+    my ($buffer, $success);
+    INSTALL: {
+        local $ENV{LC_ALL} = 'C';
+        my $sudo = $> == 0 ? '' : 'sudo';
+        $success = run(
+            command => "$sudo rpm -Uv $rpm",
+            verbose => $opts{verbose},
+            buffer  => \$buffer,
+        );
+    }
+
+    # check if the install finished correctly
+    if ( $success ) {
+        msg("successfully installed $rpm");
+        $status->installed(1);
+    } else {
+        error("error while installing $rpm");
+    }
 }
 
 
