@@ -15,10 +15,11 @@ use base 'CPANPLUS::Dist::Base';
 
 use CPANPLUS::Error; # imported subs: error(), msg()
 use File::Basename;
-use File::Copy      qw[ copy ];
-use File::Slurp     qw[ slurp ];
-use IPC::Cmd        qw[ run can_run ];
-use List::Util      qw[ first ];
+use File::Copy      qw{ copy };
+use File::Slurp     qw{ slurp };
+use IPC::Cmd        qw{ run can_run };
+use List::Util      qw{ first };
+use List::MoreUtils qw{ uniq };
 use Pod::POM;
 use Pod::POM::View::Text;
 use POSIX ();
@@ -26,7 +27,7 @@ use Readonly;
 use Text::Wrap;
 
 
-our $VERSION = '1.0.0';
+our $VERSION = '1.1.0';
 
 Readonly my $DATA_OFFSET => tell(DATA);
 Readonly my $RPMDIR => do { chomp(my $d=qx[ rpm --eval %_topdir ]); $d; };
@@ -131,12 +132,14 @@ sub prepare {
     push @reqs, 'Module::Build::Compat' if _is_module_build_compat($module);
     my $distbreqs      = join "\n", map { "BuildRequires: perl($_)" } @reqs;
     my @docfiles =
+        uniq
         grep { /(README|Change(s|log)|LICENSE)$/i }
         map { basename $_ }
         @{ $module->status->files };
     my $distarch =
         defined( first { /\.(c|xs)$/i } @{ $module->status->files } )
-        ? '' : 'BuildArch: noarch';
+        ? 'BuildRequires: perl-devel'
+        : 'BuildArch: noarch';
 
     my $rpmname = _mk_pkg_name($distname);
     $status->rpmname( $rpmname );
@@ -404,7 +407,8 @@ sub _module_description {
             next HEAD1 unless $head1->title eq 'DESCRIPTION';
             my $pom  = $head1->content;                         # get pod for DESCRIPTION paragraph
             my $text = $pom->present('Pod::POM::View::Text');   # transform pod to text
-            my @paragraphs = (split /\n\n/, $text)[0..2];       # only the 3 first paragraphs
+            my @paragraphs = split /\n\n/, $text;               # split into paragraphs
+            splice @paragraphs, 3 if @paragraphs > 3;           # only the 3 first paragraphs
             return join "\n\n", @paragraphs;
         }
     }
@@ -464,30 +468,28 @@ sub _module_summary {
 1;
 
 __DATA__
+%define upstream_name    DISTNAME
+%define upstream_version DISTVERS
 
-%define realname   DISTNAME
-%define version    DISTVERS
-%define release    %mkrel 1
+Name:       perl-%{upstream_name}
+Version:    %perl_convert_version %{upstream_version}
+Release:    %mkrel 1
 
-Name:       perl-%{realname}
-Version:    %{version}
-Release:    %{release}
-License:    GPL or Artistic
-Group:      Development/Perl
 Summary:    DISTSUMMARY
-Source:     http://www.cpan.org/modules/by-module/DISTTOPLEVEL/%{realname}-%{version}.DISTEXTENSION
-Url:        http://search.cpan.org/dist/%{realname}
-BuildRoot:  %{_tmppath}/%{name}-%{version}-%{release}-buildroot
-BuildRequires: perl-devel
-DISTBUILDREQUIRES
+License:    GPL+ or Artistic
+Group:      Development/Perl
+Url:        http://search.cpan.org/dist/%{upstream_name}
+Source0:    http://www.cpan.org/modules/by-module/DISTTOPLEVEL/%{upstream_name}-%{upstream_version}.DISTEXTENSION
 
+DISTBUILDREQUIRES
 DISTARCH
+BuildRoot:  %{_tmppath}/%{name}-%{version}-%{release}
 
 %description
 DISTDESCR
 
 %prep
-%setup -q -n %{realname}-%{version} 
+%setup -q -n %{upstream_name}-%{upstream_version}
 
 %build
 %{__perl} Makefile.PL INSTALLDIRS=vendor
