@@ -1,12 +1,15 @@
-#
-# This file is part of CPANPLUS::Dist::Mdv.
-# Copyright (c) 2007 Jerome Quelin, all rights reserved.
-#
-# This program is free software; you can redistribute it and/or modify
-# it under the same terms as Perl itself.
-#
-
+# 
+# This file is part of CPANPLUS-Dist-Mdv
+# 
+# This software is copyright (c) 2007 by Jerome Quelin.
+# 
+# This is free software; you can redistribute it and/or modify it under
+# the same terms as the Perl 5 programming language system itself.
+# 
 package CPANPLUS::Dist::Mdv;
+our $VERSION = '1.2.0';
+
+# ABSTRACT: a cpanplus backend to build mandriva rpms
 
 use strict;
 use warnings;
@@ -14,12 +17,13 @@ use warnings;
 use base 'CPANPLUS::Dist::Base';
 
 use CPANPLUS::Error; # imported subs: error(), msg()
-use File::Basename;
+use File::Basename  qw{ basename dirname fileparse };
 use File::Copy      qw{ copy };
 use File::Slurp     qw{ slurp };
 use IPC::Cmd        qw{ run can_run };
 use List::Util      qw{ first };
 use List::MoreUtils qw{ uniq };
+use Module::Util    qw{ find_installed };
 use Pod::POM;
 use Pod::POM::View::Text;
 use POSIX ();
@@ -27,21 +31,12 @@ use Readonly;
 use Text::Wrap;
 
 
-our $VERSION = '1.1.0';
-
-Readonly my $DATA_OFFSET => tell(DATA);
 Readonly my $RPMDIR => do { chomp(my $d=qx[ rpm --eval %_topdir ]); $d; };
 
 
-#--
-# class methods
+# -- class methods
 
-#
-# my $bool = CPANPLUS::Dist::Mdv->format_available;
-#
-# Return a boolean indicating whether or not you can use this package to
-# create and install modules in your environment.
-#
+
 sub format_available {
     # check mandriva release file
     if ( ! -f '/etc/mandriva-release' ) {
@@ -73,15 +68,10 @@ sub format_available {
     return not $flag;
 }
 
-#--
-# public methods
 
-#
-# my $bool = $mdv->init;
-#
-# Sets up the C<CPANPLUS::Dist::Mdv> object for use, and return true if
-# everything went fine.
-#
+# -- public methods
+
+
 sub init {
     my ($self) = @_;
     my $status = $self->status; # an Object::Accessor
@@ -98,6 +88,8 @@ sub init {
 
     return 1;
 }
+
+
 
 sub prepare {
     my ($self, %args) = @_;
@@ -129,7 +121,20 @@ sub prepare {
     #my $distlicense    =
     my ($disttoplevel) = $module->name=~ /([^:]+)::/;
     my @reqs           = sort keys %{ $module->status->prereqs };
-    push @reqs, 'Module::Build::Compat' if _is_module_build_compat($module);
+
+    my ($distbuild, $distmaker, $distinstall);
+    if (-e _path_to_makefile_pl($module)) {
+        push @reqs, 'Module::Build::Compat' if _is_module_build_compat($module);
+        $distbuild = "%{__perl} Makefile.PL INSTALLDIRS=vendor\n";
+        $distmaker = "%{make}";
+        $distinstall = "%makeinstall_std";
+    } else {
+        # module::build only distribution
+        push @reqs, 'Module::Build';
+        $distbuild = "%{__perl} Build.PL installdirs=vendor\n";
+        $distmaker = "./Build";
+        $distinstall = "./Build install destdir=%{buildroot}";
+    }
     my $distbreqs      = join "\n", map { "BuildRequires: perl($_)" } @reqs;
     my @docfiles =
         uniq
@@ -175,21 +180,26 @@ sub prepare {
     my $vers = $module->version;
 
     # writing the spec file.
-    seek DATA, $DATA_OFFSET, 0;
+    my $tmpl = _template_spec_file_path();
+    open my $tmplfh, '<', $tmpl or die "can't open '$tmpl': $!";
+
     POSIX::setlocale(&POSIX::LC_ALL, 'C');
     my $specfh;
     if ( not open $specfh, '>', $spec ) {
         error( "can't open '$spec': $!" );
         return;
     }
-    while ( defined( my $line = <DATA> ) ) {
+    while ( defined( my $line = <$tmplfh> ) ) {
         last if $line =~ /^__END__$/;
 
         $line =~ s/DISTNAME/$distname/;
         $line =~ s/DISTVERS/$distvers/g;
         $line =~ s/DISTSUMMARY/$distsummary/;
         $line =~ s/DISTEXTENSION/$distext/;
+        $line =~ s/DISTBUILDBUILDER/$distbuild/;
+        $line =~ s/DISTINSTALL/$distinstall/;
         $line =~ s/DISTARCH/$distarch/;
+        $line =~ s/DISTMAKER/$distmaker/;
         $line =~ s/DISTBUILDREQUIRES/$distbreqs/;
         $line =~ s/DISTDESCR/$distdescr/;
         $line =~ s/DISTDOC/@docfiles ? "%doc @docfiles" : ''/e;
@@ -211,6 +221,7 @@ sub prepare {
     $status->prepared(1);
     return 1;
 }
+
 
 
 sub create {
@@ -296,6 +307,8 @@ sub create {
     }
 }
 
+
+
 sub install {
     my ($self, %args) = @_;
     my $status = $self->status;               # private hash
@@ -336,9 +349,7 @@ sub install {
 }
 
 
-
-#--
-# private methods
+# -- private methods
 
 #
 # my $bool = $self->_has_been_build;
@@ -353,14 +364,42 @@ sub _has_been_build {
 }
 
 
-#--
-# private subs
+# -- private subs
 
+#
+# my $path = _path_to_makefile_pl();
+#
+# return the path to the extracted makefile.pl
+#
+sub _path_to_makefile_pl {
+    my $module = shift;
+    return $module->_status->extract . '/Makefile.PL';
+}
+
+
+#
+# my $bool = _is_module_build_compat();
+#
+# return true if shipped makefile.pl is auto-generated with
+# module::build::compat usage.
+#
 sub _is_module_build_compat {
     my ($module) = @_;
-    my $makefile = $module->_status->extract . '/Makefile.PL';
+    my $makefile = _path_to_makefile_pl($module);
     my $content  = slurp($makefile);
     return $content =~ /Module::Build::Compat/;
+}
+
+
+#
+# my $path = _template_spec_file_path();
+#
+# return the absolute path where the template spec will be located.
+#
+sub _template_spec_file_path {
+    my $path = find_installed(__PACKAGE__);
+    my ($undef, $dirname) = fileparse($path);
+    return "$dirname/Mdv/template.spec";
 }
 
 
@@ -467,69 +506,22 @@ sub _module_summary {
 
 1;
 
-__DATA__
-%define upstream_name    DISTNAME
-%define upstream_version DISTVERS
 
-Name:       perl-%{upstream_name}
-Version:    %perl_convert_version %{upstream_version}
-Release:    %mkrel 1
 
-Summary:    DISTSUMMARY
-License:    GPL+ or Artistic
-Group:      Development/Perl
-Url:        http://search.cpan.org/dist/%{upstream_name}
-Source0:    http://www.cpan.org/modules/by-module/DISTTOPLEVEL/%{upstream_name}-%{upstream_version}.DISTEXTENSION
 
-DISTBUILDREQUIRES
-DISTARCH
-BuildRoot:  %{_tmppath}/%{name}-%{version}-%{release}
-
-%description
-DISTDESCR
-
-%prep
-%setup -q -n %{upstream_name}-%{upstream_version}
-
-%build
-%{__perl} Makefile.PL INSTALLDIRS=vendor
-%make
-
-%check
-make test
-
-%install
-rm -rf %buildroot
-%makeinstall_std
-
-%clean
-rm -rf %buildroot
-
-%files
-%defattr(-,root,root)
-DISTDOC
-%{_mandir}/man3/*
-%perl_vendorlib/*
-DISTEXTRA
-
-%changelog
-* DISTDATE cpan2dist DISTVERS-1mdv
-- initial mdv release, generated with cpan2dist
-
-__END__
-
+=pod
 
 =head1 NAME
 
 CPANPLUS::Dist::Mdv - a cpanplus backend to build mandriva rpms
 
+=head1 VERSION
 
+version 1.2.0
 
 =head1 SYNOPSYS
 
     cpan2dist --format=CPANPLUS::Dist::Mdv Some::Random::Package
-
-
 
 =head1 DESCRIPTION
 
@@ -550,94 +542,20 @@ Note that these packages are built automatically from CPAN and are
 assumed to have the same license as perl and come without support.
 Please always refer to the original CPAN package if you have questions.
 
-
-
-=head1 CLASS METHODS
-
-=head2 $bool = CPANPLUS::Dist::Mdv->format_available;
-
-Return a boolean indicating whether or not you can use this package to
-create and install modules in your environment.
-
-It will verify if you are on a mandriva system, and if you have all the
-necessary components avialable to build your own mandriva packages. You
-will need at least these dependencies installed: C<rpm>, C<rpmbuild> and
-C<gcc>.
-
-
-
-=head1 PUBLIC METHODS
-
-=head2 $bool = $mdv->init;
-
-Sets up the C<CPANPLUS::Dist::Mdv> object for use. Effectively creates
-all the needed status accessors.
-
-Called automatically whenever you create a new C<CPANPLUS::Dist> object.
-
-
-=head2 $bool = $mdv->prepare;
-
-Prepares a distribution for creation. This means it will create the rpm
-spec file needed to build the rpm and source rpm. This will also satisfy
-any prerequisites the module may have.
-
-Note that the spec file will be as accurate as possible. However, some
-fields may wrong (especially the description, and maybe the summary)
-since it relies on pod parsing to find those information.
-
-Returns true on success and false on failure.
-
-You may then call C<< $mdv->create >> on the object to create the rpm
-from the spec file, and then C<< $mdv->install >> on the object to
-actually install it.
-
-
-=head2 $bool = $mdv->create;
-
-Builds the rpm file from the spec file created during the C<create()>
-step.
-
-Returns true on success and false on failure.
-
-You may then call C<< $mdv->install >> on the object to actually install it.
-
-
-=head2 $bool = $mdv->install;
-
-Installs the rpm using C<rpm -U>.
-
-B</!\ Work in progress: not implemented.>
-
-Returns true on success and false on failure
-
-
-
 =head1 TODO
 
-There are no TODOs of a technical nature currently, merely of an
-administrative one;
-
-=over
-
-=item o Scan for proper license
+=head2 Scan for proper license
 
 Right now we assume that the license of every module is C<the same
 as perl itself>. Although correct in almost all cases, it should 
 really be probed rather than assumed.
 
-
-=item o Long description
+=head2 Long description
 
 Right now we provided the description as given by the module in it's
 meta data. However, not all modules provide this meta data and rather
 than scanning the files in the package for it, we simply default to the
 name of the module.
-
-
-=back
-
-
 
 =head1 BUGS
 
@@ -647,17 +565,13 @@ L<http://rt.cpan.org/NoAuth/ReportBug.html?Queue=CPANPLUS-Dist-Mdv>.  I
 will be notified, and then you'll automatically be notified of progress
 on your bug as I make changes.
 
-
-
 =head1 SEE ALSO
 
 L<CPANPLUS::Backend>, L<CPANPLUS::Module>, L<CPANPLUS::Dist>,
 C<cpan2dist>, C<rpm>, C<urpmi>
 
-
 C<CPANPLUS::Dist::Mdv> development takes place on
 L<http://repo.or.cz/w/cpanplus-dist-mdv.git> - feel free to join us.
-
 
 You can also look for information on this module at:
 
@@ -675,23 +589,81 @@ L<http://cpanratings.perl.org/d/CPANPLUS-Dist-Mdv>
 
 L<http://rt.cpan.org/NoAuth/Bugs.html?Dist=CPANPLUS-Dist-Mdv>
 
-=back
+=back 
+
+=head1 METHODS
+
+=head2 my $bool = CPANPLUS::Dist::Mdv->format_available;
+
+Return a boolean indicating whether or not you can use this package to
+create and install modules in your environment.
+
+It will verify if you are on a mandriva system, and if you have all the
+necessary components avialable to build your own mandriva packages. You
+will need at least these dependencies installed: C<rpm>, C<rpmbuild> and
+C<gcc>.
+
+
+
+=head2 my $bool = $mdv->init;
+
+Sets up the C<CPANPLUS::Dist::Mdv> object for use. Effectively creates
+all the needed status accessors.
+
+Called automatically whenever you create a new C<CPANPLUS::Dist> object.
+
+
+
+=head2 my $bool = $mdv->prepare;
+
+Prepares a distribution for creation. This means it will create the rpm
+spec file needed to build the rpm and source rpm. This will also satisfy
+any prerequisites the module may have.
+
+Note that the spec file will be as accurate as possible. However, some
+fields may wrong (especially the description, and maybe the summary)
+since it relies on pod parsing to find those information.
+
+Returns true on success and false on failure.
+
+You may then call C<< $mdv->create >> on the object to create the rpm
+from the spec file, and then C<< $mdv->install >> on the object to
+actually install it.
+
+
+
+=head2 my $bool = $mdv->create;
+
+Builds the rpm file from the spec file created during the C<create()>
+step.
+
+Returns true on success and false on failure.
+
+You may then call C<< $mdv->install >> on the object to actually install it.
+
+
+
+=head2 my $bool = $mdv->install;
+
+Installs the rpm using C<rpm -U>.
+
+Returns true on success and false on failure
 
 
 
 =head1 AUTHOR
 
-Jerome Quelin, C<< <jquelin at cpan.org> >>
+  Jerome Quelin
+
+=head1 COPYRIGHT AND LICENSE
+
+This software is copyright (c) 2007 by Jerome Quelin.
+
+This is free software; you can redistribute it and/or modify it under
+the same terms as the Perl 5 programming language system itself.
+
+=cut 
 
 
 
-=head1 COPYRIGHT & LICENSE
-
-Copyright (c) 2007 Jerome Quelin, all rights reserved.
-
-This program is free software; you can redistribute it and/or modify
-it under the same terms as Perl itself.
-
-
-=cut
-
+__END__

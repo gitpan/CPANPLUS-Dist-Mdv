@@ -1,19 +1,27 @@
 #!perl
-#
-# This file is part of CPANPLUS::Dist::Mdv.
-# Copyright (c) 2007 Jerome Quelin, all rights reserved.
-#
-# This program is free software; you can redistribute it and/or modify
-# it under the same terms as Perl itself.
-#
-#
+# 
+# This file is part of CPANPLUS-Dist-Mdv
+# 
+# This software is copyright (c) 2007 by Jerome Quelin.
+# 
+# This is free software; you can redistribute it and/or modify it under
+# the same terms as the Perl 5 programming language system itself.
+# 
 
+use 5.010;
 use strict;
 use warnings;
 
-use Test::More tests => 1;
+use File::Find::Rule;
+use Test::More;
+use Test::Script;
 
-require_ok( 'CPANPLUS::Dist::Mdv' );
-diag( "Testing CPANPLUS::Dist::Mdv $CPANPLUS::Dist::Mdv::VERSION, Perl $], $^X" );
+my @files = File::Find::Rule->relative->file->name('*.pm')->in('lib');
+plan tests => scalar(@files);
 
-exit;
+foreach my $file ( @files ) {
+    my $module = $file;
+    $module =~ s/[\/\\]/::/g;
+    $module =~ s/\.pm$//;
+    is( qx{ $^X -M$module -e "print '$module ok'" }, "$module ok", "$module loaded ok" );
+}

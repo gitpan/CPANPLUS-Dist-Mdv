@@ -1,52 +1,33 @@
 ---
-name: CPANPLUS-Dist-Mdv
-version: 1.1.0
+abstract: 'a cpanplus backend to build mandriva rpms'
 author:
-  - 'Jerome Quelin <jquelin@cpan.org>'
-abstract: a cpanplus backend to build mandriva rpms
+  - 'Jerome Quelin'
+generated_by: 'Dist::Zilla::Plugin::MetaYAML version 1.091610'
 license: perl
-resources:
-  license: http://dev.perl.org/licenses/
-  repository: http://repo.or.cz/w/cpanplus-dist-mdv.git
+meta-spec:
+  url: http://module-build.sourceforge.net/META-spec-v1.4.html
+  version: 1.4
+name: CPANPLUS-Dist-Mdv
 requires:
-  CPANPLUS: 0
-  CPANPLUS::Error: 0
+  CPANPLUS::Error;: 0
   File::Basename: 0
   File::Copy: 0
+  File::Find::Rule: 0
   File::Slurp: 0
   IPC::Cmd: 0
   List::MoreUtils: 0
   List::Util: 0
-  POSIX: 0
-  Pod::POM: 0
-  Pod::POM::View::Text: 0
-  Readonly: 0
-  Text::Wrap: 0
-  perl: 5.008
-build_requires:
-  CPANPLUS: 0
-  CPANPLUS::Error: 0
-  File::Basename: 0
-  File::Copy: 0
-  File::Slurp: 0
-  IPC::Cmd: 0
-  List::MoreUtils: 0
-  List::Util: 0
+  Module::Util: 0
   POSIX: 0
   Pod::POM: 0
   Pod::POM::View::Text: 0
   Readonly: 0
   Test::More: 0
+  Test::Script: 0
   Text::Wrap: 0
-  perl: 5.008
-recommends:
-  Test::Pod: 0
-  Test::Pod::Coverage: 0
-provides:
-  CPANPLUS::Dist::Mdv:
-    file: lib/CPANPLUS/Dist/Mdv.pm
-    version: 1.1.0
-generated_by: Module::Build version 0.32
-meta-spec:
-  url: http://module-build.sourceforge.net/META-spec-v1.2.html
-  version: 1.2
+  base: 0
+  perl: 5.010
+resources:
+  homepage: http://search.cpan.org/dist/CPANPLUS-Dist-Mdv/
+  repository: http://repo.or.cz/w/cpanplus-dist-mdv.git
+version: 1.2.0
