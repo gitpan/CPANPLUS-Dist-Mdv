@@ -7,7 +7,7 @@
 # the same terms as the Perl 5 programming language system itself.
 # 
 package CPANPLUS::Dist::Mdv;
-our $VERSION = '1.2.0';
+our $VERSION = '1.2.1';
 
 # ABSTRACT: a cpanplus backend to build mandriva rpms
 
@@ -517,7 +517,7 @@ CPANPLUS::Dist::Mdv - a cpanplus backend to build mandriva rpms
 
 =head1 VERSION
 
-version 1.2.0
+version 1.2.1
 
 =head1 SYNOPSYS
 

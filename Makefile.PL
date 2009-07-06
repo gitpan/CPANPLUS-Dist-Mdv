@@ -9,7 +9,7 @@ WriteMakefile(
   NAME      => 'CPANPLUS::Dist::Mdv',
   AUTHOR    => 'Jerome\ Quelin',
   ABSTRACT  => 'a\ cpanplus\ backend\ to\ build\ mandriva\ rpms',
-  VERSION   => '1.2.0',
+  VERSION   => '1.2.1',
   EXE_FILES => [ qw() ],
   (eval { ExtUtils::MakeMaker->VERSION(6.21) } ? (LICENSE => 'perl') : ()),
   PREREQ_PM    => {
@@ -24,7 +24,7 @@ WriteMakefile(
     "base" => '0',
     "File::Copy" => '0',
     "File::Find::Rule" => '0',
-    "CPANPLUS::Error;" => '0',
+    "CPANPLUS::Error" => '0',
     "IPC::Cmd" => '0',
     "Readonly" => '0',
     "Test::More" => '0',

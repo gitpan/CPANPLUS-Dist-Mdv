@@ -9,7 +9,7 @@ meta-spec:
   version: 1.4
 name: CPANPLUS-Dist-Mdv
 requires:
-  CPANPLUS::Error;: 0
+  CPANPLUS::Error: 0
   File::Basename: 0
   File::Copy: 0
   File::Find::Rule: 0
@@ -30,4 +30,4 @@ requires:
 resources:
   homepage: http://search.cpan.org/dist/CPANPLUS-Dist-Mdv/
   repository: http://repo.or.cz/w/cpanplus-dist-mdv.git
-version: 1.2.0
+version: 1.2.1
