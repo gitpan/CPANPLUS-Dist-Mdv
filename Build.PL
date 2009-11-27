@@ -2,19 +2,17 @@
 use strict;
 use warnings;
 
- BEGIN { require 5.010; } 
+use Module::Build;
 
-use ExtUtils::MakeMaker;
-
-WriteMakefile(
-  DISTNAME  => 'CPANPLUS-Dist-Mdv',
-  NAME      => 'CPANPLUS::Dist::Mdv',
-  AUTHOR    => "Jerome\ Quelin",
-  ABSTRACT  => "a\ cpanplus\ backend\ to\ build\ mandriva\ rpms",
-  VERSION   => '2.093310',
-  EXE_FILES => [ qw() ],
-  (eval { ExtUtils::MakeMaker->VERSION(6.31) } ? (LICENSE => 'perl') : ()),
-  PREREQ_PM    => {
+my $build = Module::Build->new(
+  module_name   => 'CPANPLUS::Dist::Mdv',
+  license       => 'perl',
+  dist_abstract => "a\ cpanplus\ backend\ to\ build\ mandriva\ rpms",
+  dist_name     => "CPANPLUS\-Dist\-Mdv",
+  dist_author   => [
+"Jerome\ Quelin",
+  ],
+  requires      => {
     "Pod::POM::View::Text" => '0',
     "Pod::POM" => '0',
     "List::Util" => '0',
@@ -26,13 +24,16 @@ WriteMakefile(
     "base" => '0',
     "File::Copy" => '0',
     "English" => '0',
+    "ExtUtils::MakeMaker" => '0',
     "CPANPLUS::Error" => '0',
     "IPC::Cmd" => '0',
     "Readonly" => '0',
     "Test::More" => '0',
+    "perl" => '5.010',
     "Module::Util" => '0',
     "File::Basename" => '0',
   },
-  test => {TESTS => 't/*.t'}
+  script_files => [ qw() ],
 );
 
+$build->create_build_script;

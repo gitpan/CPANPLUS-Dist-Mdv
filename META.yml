@@ -2,32 +2,42 @@
 abstract: 'a cpanplus backend to build mandriva rpms'
 author:
   - 'Jerome Quelin'
-generated_by: 'Dist::Zilla::Plugin::MetaYAML version 1.091610'
+build_requires:
+  Module::Build: 0.35
+configure_requires:
+  Module::Build: 0.35
+generated_by: 'Dist::Zilla version 1.093250'
 license: perl
 meta-spec:
   url: http://module-build.sourceforge.net/META-spec-v1.4.html
   version: 1.4
 name: CPANPLUS-Dist-Mdv
+provides:
+  CPANPLUS::Dist::Mdv:
+    file: lib/CPANPLUS/Dist/Mdv.pm
+    version: 2.093310
 requires:
   CPANPLUS::Error: 0
+  English: 0
+  ExtUtils::MakeMaker: 0
   File::Basename: 0
   File::Copy: 0
-  File::Find::Rule: 0
+  File::Find: 0
   File::Slurp: 0
   IPC::Cmd: 0
   List::MoreUtils: 0
   List::Util: 0
+  Module::Build: 0
   Module::Util: 0
   POSIX: 0
   Pod::POM: 0
   Pod::POM::View::Text: 0
   Readonly: 0
   Test::More: 0
-  Test::Script: 0
   Text::Wrap: 0
   base: 0
   perl: 5.010
 resources:
   homepage: http://search.cpan.org/dist/CPANPLUS-Dist-Mdv/
   repository: http://repo.or.cz/w/cpanplus-dist-mdv.git
-version: 1.2.1
+version: 2.093310

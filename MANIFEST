@@ -1,3 +1,4 @@
+Build.PL
 Changes
 LICENSE
 MANIFEST
@@ -7,6 +8,8 @@ README
 dist.ini
 lib/CPANPLUS/Dist/Mdv.pm
 lib/CPANPLUS/Dist/Mdv/template.spec
-t/00-load.t
+t/00-compile.t
+t/author-critic.t
+t/release-meta-yaml.t
 t/release-pod-coverage.t
 t/release-pod-syntax.t

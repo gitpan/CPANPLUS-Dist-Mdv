@@ -6,13 +6,15 @@
 # This is free software; you can redistribute it and/or modify it under
 # the same terms as the Perl 5 programming language system itself.
 # 
-package CPANPLUS::Dist::Mdv;
-our $VERSION = '1.2.1';
-
-# ABSTRACT: a cpanplus backend to build mandriva rpms
-
+use 5.010;
 use strict;
 use warnings;
+
+package CPANPLUS::Dist::Mdv;
+our $VERSION = '2.093310';
+
+
+# ABSTRACT: a cpanplus backend to build mandriva rpms
 
 use base 'CPANPLUS::Dist::Base';
 
@@ -33,7 +35,6 @@ use Text::Wrap;
 
 Readonly my $RPMDIR => do { chomp(my $d=qx[ rpm --eval %_topdir ]); $d; };
 
-
 # -- class methods
 
 
@@ -47,11 +48,7 @@ sub format_available {
     my $flag;
 
     # check rpm tree structure
-    if ( ! -d $RPMDIR ) {
-        error( 'need to create rpm tree structure in your home' );
-        return;
-    }
-    foreach my $subdir ( qw[ BUILD RPMS SOURCES SPECS SRPMS tmp ] ) {
+    foreach my $subdir ( qw{ BUILD RPMS SOURCES SPECS SRPMS tmp } ) {
         my $dir = "$RPMDIR/$subdir";
         next if -d $dir;
         error( "missing directory '$dir'" );
@@ -328,6 +325,7 @@ sub install {
     msg( "installing $rpm" );
 
     # install the rpm
+    # sudo is used, which means sudoers should be properly configured.
     my ($buffer, $success);
     INSTALL: {
         local $ENV{LC_ALL} = 'C';
@@ -484,8 +482,10 @@ sub _module_summary {
             next unless defined $pom;                 # the file may contain no pod, that's ok
             HEAD1:
             foreach my $head1 ($pom->head1) {
+                # continue till we find '=head1 NAME'
                 my $title = $head1->title;
                 next HEAD1 unless $title eq 'NAME';
+                # extract the description in NAME section
                 my $content = $head1->content;
                 next DOCFILE unless $content =~ /^[^-]+ - (.*)$/m;
                 $summary = $1 if $content;
@@ -498,6 +498,7 @@ sub _module_summary {
     }
 
     # summary must begin with an uppercase, without any final dot
+    # (this is a rpmlint policy)
     $summary =~ s/^(.)/\u$1/;
     $summary =~ s/\.$//;
 
@@ -505,8 +506,6 @@ sub _module_summary {
 }
 
 1;
-
-
 
 
 =pod
@@ -517,11 +516,7 @@ CPANPLUS::Dist::Mdv - a cpanplus backend to build mandriva rpms
 
 =head1 VERSION
 
-version 1.2.1
-
-=head1 SYNOPSYS
-
-    cpan2dist --format=CPANPLUS::Dist::Mdv Some::Random::Package
+version 2.093310
 
 =head1 DESCRIPTION
 
@@ -542,55 +537,6 @@ Note that these packages are built automatically from CPAN and are
 assumed to have the same license as perl and come without support.
 Please always refer to the original CPAN package if you have questions.
 
-=head1 TODO
-
-=head2 Scan for proper license
-
-Right now we assume that the license of every module is C<the same
-as perl itself>. Although correct in almost all cases, it should 
-really be probed rather than assumed.
-
-=head2 Long description
-
-Right now we provided the description as given by the module in it's
-meta data. However, not all modules provide this meta data and rather
-than scanning the files in the package for it, we simply default to the
-name of the module.
-
-=head1 BUGS
-
-Please report any bugs or feature requests to C<< < cpanplus-dist-mdv at
-rt.cpan.org> >>, or through the web interface at
-L<http://rt.cpan.org/NoAuth/ReportBug.html?Queue=CPANPLUS-Dist-Mdv>.  I
-will be notified, and then you'll automatically be notified of progress
-on your bug as I make changes.
-
-=head1 SEE ALSO
-
-L<CPANPLUS::Backend>, L<CPANPLUS::Module>, L<CPANPLUS::Dist>,
-C<cpan2dist>, C<rpm>, C<urpmi>
-
-C<CPANPLUS::Dist::Mdv> development takes place on
-L<http://repo.or.cz/w/cpanplus-dist-mdv.git> - feel free to join us.
-
-You can also look for information on this module at:
-
-=over 4
-
-=item * AnnoCPAN: Annotated CPAN documentation
-
-L<http://annocpan.org/dist/CPANPLUS-Dist-Mdv>
-
-=item * CPAN Ratings
-
-L<http://cpanratings.perl.org/d/CPANPLUS-Dist-Mdv>
-
-=item * RT: CPAN's request tracker
-
-L<http://rt.cpan.org/NoAuth/Bugs.html?Dist=CPANPLUS-Dist-Mdv>
-
-=back 
-
 =head1 METHODS
 
 =head2 my $bool = CPANPLUS::Dist::Mdv->format_available;
@@ -603,16 +549,12 @@ necessary components avialable to build your own mandriva packages. You
 will need at least these dependencies installed: C<rpm>, C<rpmbuild> and
 C<gcc>.
 
-
-
 =head2 my $bool = $mdv->init;
 
 Sets up the C<CPANPLUS::Dist::Mdv> object for use. Effectively creates
 all the needed status accessors.
 
 Called automatically whenever you create a new C<CPANPLUS::Dist> object.
-
-
 
 =head2 my $bool = $mdv->prepare;
 
@@ -630,8 +572,6 @@ You may then call C<< $mdv->create >> on the object to create the rpm
 from the spec file, and then C<< $mdv->install >> on the object to
 actually install it.
 
-
-
 =head2 my $bool = $mdv->create;
 
 Builds the rpm file from the spec file created during the C<create()>
@@ -641,15 +581,61 @@ Returns true on success and false on failure.
 
 You may then call C<< $mdv->install >> on the object to actually install it.
 
-
-
 =head2 my $bool = $mdv->install;
 
 Installs the rpm using C<rpm -U>.
 
 Returns true on success and false on failure
 
+=head1 SYNOPSYS
 
+    $ cpan2dist --format=CPANPLUS::Dist::Mdv Some::Random::Package
+
+=head1 TODO
+
+=head2 Scan for proper license
+
+Right now we assume that the license of every module is C<the same
+as perl itself>. Although correct in almost all cases, it should 
+really be probed rather than assumed.
+
+=head2 Long description
+
+Right now we provided the description as given by the module in it's
+meta data. However, not all modules provide this meta data and rather
+than scanning the files in the package for it, we simply default to the
+name of the module.
+
+=head1 SEE ALSO
+
+L<CPANPLUS::Backend>, L<CPANPLUS::Module>, L<CPANPLUS::Dist>,
+C<cpan2dist>, C<rpm>, C<urpmi>
+
+You can look for information on this module at:
+
+=over 4
+
+=item * Search CPAN
+
+L<http://search.cpan.org/dist/CPANPLUS-Dist-Mdv>
+
+=item * See open / report bugs
+
+L<http://rt.cpan.org/NoAuth/Bugs.html?Dist=CPANPLUS-Dist-Mdv>
+
+=item * Git repository
+
+L<http://github.com/jquelin/cpanplus-dist-mdv>
+
+=item * AnnoCPAN: Annotated CPAN documentation
+
+L<http://annocpan.org/dist/CPANPLUS-Dist-Mdv>
+
+=item * CPAN Ratings
+
+L<http://cpanratings.perl.org/d/CPANPLUS-Dist-Mdv>
+
+=back
 
 =head1 AUTHOR
 
@@ -662,8 +648,7 @@ This software is copyright (c) 2007 by Jerome Quelin.
 This is free software; you can redistribute it and/or modify it under
 the same terms as the Perl 5 programming language system itself.
 
-=cut 
-
+=cut
 
 
 __END__
