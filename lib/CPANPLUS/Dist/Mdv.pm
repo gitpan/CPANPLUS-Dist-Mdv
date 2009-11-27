@@ -11,7 +11,7 @@ use strict;
 use warnings;
 
 package CPANPLUS::Dist::Mdv;
-our $VERSION = '2.093310';
+our $VERSION = '2.093311';
 
 
 # ABSTRACT: a cpanplus backend to build mandriva rpms
@@ -516,7 +516,7 @@ CPANPLUS::Dist::Mdv - a cpanplus backend to build mandriva rpms
 
 =head1 VERSION
 
-version 2.093310
+version 2.093311
 
 =head1 DESCRIPTION
 

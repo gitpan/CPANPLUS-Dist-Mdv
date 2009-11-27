@@ -11,7 +11,7 @@ WriteMakefile(
   NAME      => 'CPANPLUS::Dist::Mdv',
   AUTHOR    => "Jerome\ Quelin",
   ABSTRACT  => "a\ cpanplus\ backend\ to\ build\ mandriva\ rpms",
-  VERSION   => '2.093310',
+  VERSION   => '2.093311',
   EXE_FILES => [ qw() ],
   (eval { ExtUtils::MakeMaker->VERSION(6.31) } ? (LICENSE => 'perl') : ()),
   PREREQ_PM    => {

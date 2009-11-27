@@ -15,7 +15,7 @@ name: CPANPLUS-Dist-Mdv
 provides:
   CPANPLUS::Dist::Mdv:
     file: lib/CPANPLUS/Dist/Mdv.pm
-    version: 2.093310
+    version: 2.093311
 requires:
   CPANPLUS::Error: 0
   English: 0
@@ -39,5 +39,5 @@ requires:
   perl: 5.010
 resources:
   homepage: http://search.cpan.org/dist/CPANPLUS-Dist-Mdv/
-  repository: http://repo.or.cz/w/cpanplus-dist-mdv.git
-version: 2.093310
+  repository: http://github.com/jquelin/cpanplus-dist-mdv
+version: 2.093311
