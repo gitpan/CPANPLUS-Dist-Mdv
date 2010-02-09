@@ -11,21 +11,19 @@ use strict;
 use warnings;
 
 package CPANPLUS::Dist::Mdv;
-our $VERSION = '2.093311';
-
-
+our $VERSION = '2.100400';
 # ABSTRACT: a cpanplus backend to build mandriva rpms
 
 use base 'CPANPLUS::Dist::Base';
 
 use CPANPLUS::Error; # imported subs: error(), msg()
-use File::Basename  qw{ basename dirname fileparse };
+use File::Basename  qw{ basename dirname };
 use File::Copy      qw{ copy };
+use File::ShareDir  qw{ dist_dir };
 use File::Slurp     qw{ slurp };
 use IPC::Cmd        qw{ run can_run };
 use List::Util      qw{ first };
 use List::MoreUtils qw{ uniq };
-use Module::Util    qw{ find_installed };
 use Pod::POM;
 use Pod::POM::View::Text;
 use POSIX ();
@@ -123,7 +121,7 @@ sub prepare {
     if (-e _path_to_makefile_pl($module)) {
         push @reqs, 'Module::Build::Compat' if _is_module_build_compat($module);
         $distbuild = "%{__perl} Makefile.PL INSTALLDIRS=vendor\n";
-        $distmaker = "%{make}";
+        $distmaker = "%make";
         $distinstall = "%makeinstall_std";
     } else {
         # module::build only distribution
@@ -132,10 +130,11 @@ sub prepare {
         $distmaker = "./Build";
         $distinstall = "./Build install destdir=%{buildroot}";
     }
-    my $distbreqs      = join "\n", map { "BuildRequires: perl($_)" } @reqs;
+    my $distbreqs      = join "\n", map { "BuildRequires: perl($_)" } 
+                         grep { $_ ne "perl" } @reqs;
     my @docfiles =
         uniq
-        grep { /(README|Change(s|log)|LICENSE)$/i }
+        grep { /(README|Change(s|log)|LICENSE|META.(json|yml))$/i }
         map { basename $_ }
         @{ $module->status->files };
     my $distarch =
@@ -395,9 +394,8 @@ sub _is_module_build_compat {
 # return the absolute path where the template spec will be located.
 #
 sub _template_spec_file_path {
-    my $path = find_installed(__PACKAGE__);
-    my ($undef, $dirname) = fileparse($path);
-    return "$dirname/Mdv/template.spec";
+    my $path = dist_dir('CPANPLUS-Dist-Mdv');
+    return "$path/template.spec";
 }
 
 
@@ -516,7 +514,7 @@ CPANPLUS::Dist::Mdv - a cpanplus backend to build mandriva rpms
 
 =head1 VERSION
 
-version 2.093311
+version 2.100400
 
 =head1 DESCRIPTION
 
@@ -583,7 +581,9 @@ You may then call C<< $mdv->install >> on the object to actually install it.
 
 =head2 my $bool = $mdv->install;
 
-Installs the rpm using C<rpm -U>.
+Installs the rpm using C<rpm -U>. If run as a non-root user, uses
+C<sudo>. This assumes that current user has sudo rights (without
+password for max efficiency) to run C<rpm>.
 
 Returns true on success and false on failure
 
@@ -652,3 +652,5 @@ the same terms as the Perl 5 programming language system itself.
 
 
 __END__
+
+
